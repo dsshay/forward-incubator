@@ -1,0 +1,89 @@
+--Найти сумму последнего платежа на контракте с лицевым счетом 0102100000088207_MG1 
+select distinct(F_SUM) as summa, DT_EVENT
+from trans_external tr1 inner join fw_contracts fw1 on tr1.id_contract = fw1.id_contract_inst
+where DT_EVENT = (select max(DT_EVENT)
+                    from trans_external tr join fw_contracts fw on tr.id_contract = fw.id_contract_inst
+                    where V_EXT_IDENT = '0102100000088207_MG1')
+and V_EXT_IDENT = '0102100000088207_MG1';
+
+
+--Создать отчет по департаментам контрактов. Выводить только те контракты, которые активны на текущий момент. 
+select V_EXT_IDENT as lic_schet, DT_REG_EVENT, V_NAME
+from fw_contracts fc left join fw_departments fd on fd.ID_DEPARTMENT = fc.ID_DEPARTMENT
+where v_status = 'A';
+
+--Найти департаменты, к которым привязано менее 2 контрактов
+select V_NAME, count(fc.ID_CONTRACT_INST) as quantity
+from fw_contracts fc inner join fw_departments fd on fd.ID_DEPARTMENT = fc.ID_DEPARTMENT
+group by V_NAME
+having  count(fc.ID_CONTRACT_INST) < 2);
+
+--Создать отчет по платежам за последний месяц в разрезе департаментов 
+--Результат: наименование департамента, сумма платежей в этом департаменте за последний месяц, 
+--количество платежей в этом департаменте за последний месяц, количество контрактов в этом департаменте.
+select V_NAME, F_SUM,
+---////////////////////////////////
+
+--Найти контракты, на которые в 2017 году было совершено более 3 платежей 
+select ident, stat, quantity
+from (select V_EXT_IDENT as ident, fw.V_STATUS as stat, count(ID_TRANS) as quantity
+        from fw_contracts fw inner join trans_external te on fw.ID_CONTRACT_INST = te.ID_CONTRACT
+        where trunc(DT_EVENT,'yyyy') = to_date('2017-01-01','yyyy-mm-dd') 
+        group by V_EXT_IDENT, fw.V_STATUS
+        )
+where quantity > 3;
+
+--Найти такие контракты, на которых есть хотя бы один платеж в 2017 году 
+select ident, stat, dep_name
+from (select V_EXT_IDENT as ident, fc.V_STATUS as stat, V_NAME as dep_name, count(ID_TRANS) as quantity
+        from fw_contracts fc inner join trans_external te on fc.ID_CONTRACT_INST = te.ID_CONTRACT
+        left join fw_departments fd on fd.ID_DEPARTMENT = fc.ID_DEPARTMENT
+        where trunc(DT_EVENT,'yyyy') = to_date('2017-01-01','yyyy-mm-dd') 
+        group by V_EXT_IDENT, fc.V_STATUS, V_NAME
+        )
+where quantity > 1;
+
+--Найти такие департаменты, к которым не привязано ни одного контракта 
+select V_NAME
+from fw_departments fd left join fw_contracts fc on fd.id_department = fc.id_department
+where fc.id_contract_inst is null;
+
+
+--Вывести количество платежей на контрактах. (Warning в исходной файле накачки не содержатся данные по таблице ci_users). 
+--А также не известно как соеденина таблица ci_users с какой-нибудь другой из предложенных. Поэтому идет чистая иммпровизация
+select quantity, dt, V_EXT_IDENT, cu.V_DESCRIPTION
+from (select V_EXT_IDENT, max(DT_EVENT) as dt, count(ID_TRANS) as quantity, ID_SOURCE
+        from trans_external te inner join fw_contracts fc on te.ID_CONTRACT = fc.ID_CONTRACT_INST
+        group by V_EXT_IDENT, ID_SOURCE) vd
+inner join ci_users cu on cu.id_users = vd.id_source;
+
+--Какой был лицевой счет первого января 2016 у контракта, на который совершили платеж ID_TRANCE = 6397542 
+--Результат: номер лицевого счета
+select V_EXT_IDENT
+from fw_contracts fc inner join trans_external te on fc.id_contract_inst = te.id_contract
+where id_trans = 6397542 and dt_start <= to_date('01-01-2016','dd-mm-yyyy') and dt_stop >= to_date('01-01-2016','dd-mm-yyyy');
+
+
+--Найти те контракты, у которых менялась валюта, например, была указана валюта рубль, потом появилась новая запись с валютой уже доллар 
+select id_contract_inst as kod, v_ext_ident as lic, v_status, v_name 
+from (select v2.id_contract_inst, v_ext_ident, v_status, val2, val1 
+        from (select id_currency as val1, id_contract_inst 
+                from fw_contracts  
+                where dt_stop != to_date('01-01-2500','dd-mm-yyyy')) v1 
+        inner join (select id_currency as val2, id_contract_inst, v_ext_ident, v_status 
+                    from fw_contracts 
+                    where dt_stop = to_date('01-01-2500','dd-mm-yyyy')) v2 
+        on v1.id_contract_inst = v2.id_contract_inst 
+        where val1 != val2) 
+inner join fw_currency on val2 = id_currency; 
+
+
+--Найти контракты, у которых есть несколько записей со статусом "Расторгнут"
+select V_EXT_IDENT
+from (select V_EXT_IDENT, count(V_STATUS) as quantity
+        from fw_contracts
+        where V_STATUS = 'C'
+        group by V_EXT_IDENT)
+where quantity > 1;
+
+

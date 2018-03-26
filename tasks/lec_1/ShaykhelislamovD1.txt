@@ -1,0 +1,75 @@
+--В таблице аудита найти количество попыток продвижения заказа 2520123, закончившихся ошибкой.
+select count(*) as count_attempt
+from fw_process_log 
+where v_message like '%2520123%' and ID_ERROR_CODE < 0 ; 
+
+--В таблице аудита найти дату/время последней попытки продвижения заказа 2520123, закончившейся ошибкой.
+select MAX(DT_TIMESTAMP) as date_last_attempt 
+from fw_process_log 
+where v_message like '%2520123%' and ID_ERROR_CODE < 0 ; 
+
+--Найти все номера заказов в таблице аудита, с которых начиналась загрузка порции заказов.
+select substr(v_message, length('Загрузка порции заказов начиная с ')) as num_strt_order
+from fw_process_log
+where v_message like 'Загрузка порции заказов начиная с%' ;
+
+--Найти количество уникальных номеров заказов в таблице аудита, с которых начиналась загрузка порции заказов.
+select count(*) as count_uniq_order
+from (select distinct (substr(v_message, length('Загрузка порции заказов начиная с ')))
+        from fw_process_log
+        where v_message like 'Загрузка порции заказов начиная с%');
+
+--Найти суммарную продолжительность продвижения заказов в долях секунды (доли секунды для "+000000000 00:00:00.063924000" = 63924000) в таблице аудита.
+select sum(to_number(substr(v_message, -9))) as sum_durability_advancement
+from fw_process_log
+where v_message like 'Процесс продвижения заказов завершен. Проверено состояний заказов:%';
+
+--Сколько было завершённых процессов продвижения заказов в таблице аудита в марте 2018.
+select count(*)
+from fw_process_log
+where dt_timestamp like '2018-03-%' and v_message like 'Процесс продвижения заказов завершен. %';
+
+--Сколько повторяющихся идентификаторов сессии есть в таблице аудита.
+select count(*) as repeated_sid 
+from (select sid 
+        from fw_process_log
+        group by sid
+        having count(*) > 1);
+
+--Найти пользователя и последнюю дату его входа по таблице аудита для кода пользователя = 11136.
+select OS_USERNAME, dt_timestamp
+from fw_process_log 
+where id_user = 11136 and rownum = 1
+order by dt_timestamp desc;
+
+
+--Вывести количество записей в таблице аудита по месяцам.
+select trunc(dt_timestamp, 'mm'), count(id_process)
+from fw_process_log
+group by trunc(dt_timestamp, 'mm');
+
+-- Сколько записей в таблице аудита со статусом сообщения = "Ошибка" для процесса с кодом = 5 в интервале 22.02.2018 - 02.03.2018 (не включая границы). 
+--Сколько среди них с уникальным текстом сообщения
+select  count(*) as numb_error_id5, count(distinct(v_message)) as numb_uniq
+from fw_process_log
+where id_process = 5 and N_STATUS = 500 and trunc(dt_timestamp) > '2018-02-22' and  trunc(dt_timestamp) < '2018-03-02' ;
+
+--По таблице переводов найти минимальную сумму перевода с датой поступления в систему в интервале 10:00-12:00 14 февраля 2017 
+--при условии, что перевод должен был проходить между разными контрактами.
+select min(N_SUM)
+from fw_transfers
+where dt_incoming > to_date('10:00 14-02-2017','hh24:mi dd-mm-yyyy') and dt_incoming < to_date('12:00 14-02-2017','hh24:mi dd-mm-yyyy')
+        and  id_contract_from != id_contract_to ;
+
+--На печатном бланке для денежного перевода есть поле для комментария к денежному переводу. 
+--Максимальная длина текста в данном поле = 22 символам. Найти переводы, комментарий к которым не поместится на данном бланке.
+select ID_CONTRACT_TO, DT_REAL, substr(V_DESCRIPTION, 23)
+from fw_transfers
+where length(v_description) > 22
+order by length(substr(V_DESCRIPTION, 23)) ;
+
+--Предоставить срез количества денежных переводов внутри контракта (контракт с которого = контракт на который) по дням.
+select  to_char(dt_real,'dd.mm.yyyy') as date_transfer , count (ID_TRANSFER_INST) as count_trasfer
+from fw_transfers
+where ID_CONTRACT_FROM = ID_CONTRACT_TO 
+group by to_char(dt_real,'dd.mm.yyyy');
